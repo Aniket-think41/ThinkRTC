@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Stream with Real-time STT</title>
+    <style>
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+        }
+        .video-section {
+            grid-column: 1;
+        }
+        .chat-section {
+            grid-column: 2;
+        }
+        .transcript-box, .response-box {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .user-speech {
+            color: #2962ff;
+            margin: 5px 0;
+        }
+        .assistant-response {
+            color: #00796b;
+            margin: 5px 0;
+        }
+        #localVideo {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 8px;
+        }
+        .transcript-box {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin: 10px 0;
+            min-height: 100px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #f9f9f9;
+        }
+        .interim {
+            color: #666;
+            font-style: italic;
+        }
+        .final {
+            color: #2962ff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="video-section">
+            <h2>Video Feed</h2>
+            <video id="localVideo" autoplay muted></video>
+            <textarea id="textInput" placeholder="Type a message..."></textarea>
+            <button id="sendText">Send Text</button>
+        </div>
+        
+        <div class="chat-section">
+            <div class="transcript-container">
+                <h2>Real-time Transcript</h2>
+                <div id="transcriptBox" class="transcript-box"></div>
+            </div>
+            
+            <div class="response-container">
+                <h2>Assistant Response</h2>
+                <div id="messages" class="response-box"></div>
+            </div>
+        </div>
+    </div>
+    <audio id="audioPlayer" controls style="display:none;"></audio>
+
+    <script>
+        const ws = new WebSocket("ws://localhost:8000/ws");
+let audioQueue = [];
+let isPlayingAudio = false;
+
+// Create a more robust audio queue system
+class AudioQueueManager {
+    constructor() {
+        this.queue = [];
+        this.isPlaying = false;
+        this.audioPlayer = document.getElementById("audioPlayer");
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        this.audioPlayer.addEventListener("ended", () => {
+            console.log("Audio ended, playing next");
+            this.isPlaying = false;
+            this.playNext();
+        });
+
+        this.audioPlayer.addEventListener("error", (e) => {
+            console.error("Audio playback error:", e);
+            this.isPlaying = false;
+            this.playNext();
+        });
+
+        // Add loadeddata event to ensure audio is properly loaded
+        this.audioPlayer.addEventListener("loadeddata", () => {
+            console.log("Audio data loaded");
+            if (this.audioPlayer.paused && this.isPlaying) {
+                this.audioPlayer.play()
+                    .catch(e => console.error("Playback failed:", e));
+            }
+        });
+    }
+
+    addToQueue(audioBlob) {
+        const url = URL.createObjectURL(audioBlob);
+        console.log("Added new audio to queue, queue size:", this.queue.length + 1);
+        this.queue.push(url);
+        this.playNext();
+    }
+
+    async playNext() {
+        if (this.isPlaying || this.queue.length === 0) {
+            return;
+        }
+
+        try {
+            this.isPlaying = true;
+            const nextUrl = this.queue.shift();
+            console.log("Playing next audio, remaining in queue:", this.queue.length);
+            
+            this.audioPlayer.src = nextUrl;
+            await this.audioPlayer.play();
+            
+            // Clean up the URL after starting playback
+            URL.revokeObjectURL(nextUrl);
+        } catch (error) {
+            console.error("Error in playNext:", error);
+            this.isPlaying = false;
+            this.playNext(); // Try the next audio in queue
+        }
+    }
+
+    clear() {
+        this.queue.forEach(url => URL.revokeObjectURL(url));
+        this.queue = [];
+        this.isPlaying = false;
+    }
+}
+
+// Initialize the audio queue manager
+const audioQueueManager = new AudioQueueManager();
+
+// Update the WebSocket message handler
+ws.onmessage = async (event) => {
+    console.log("Received message type:", typeof event.data);
+    
+    if (event.data instanceof Blob) {
+        console.log("Received audio blob of size:", event.data.size);
+        audioQueueManager.addToQueue(event.data);
+    } else {
+        try {
+            const data = JSON.parse(event.data);
+            console.log("Parsed data:", data);
+            
+            if (data.type === 'transcript') {
+                const transcriptBox = document.getElementById('transcriptBox');
+                let transcriptElement = document.createElement('p');
+                transcriptElement.className = data.is_final ? 'final' : 'interim';
+                transcriptElement.textContent = data.text;
+                transcriptBox.appendChild(transcriptElement);
+                transcriptBox.scrollTop = transcriptBox.scrollHeight;
+            }
+        } catch (e) {
+            console.log("Received text message:", event.data);
+            const messagesDiv = document.getElementById("messages");
+            const newMessage = document.createElement("p");
+            newMessage.className = 'assistant-response';
+            newMessage.textContent = event.data;
+            messagesDiv.appendChild(newMessage);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    }
+};
+
+        // Add audio player event listeners
+        const audioPlayer = document.getElementById("audioPlayer");
+        audioPlayer.addEventListener("ended", () => {
+            isPlayingAudio = false;
+            playNextAudio();
+        });
+
+        audioPlayer.addEventListener("error", () => {
+            console.error("Audio playback error");
+            isPlayingAudio = false;
+            playNextAudio();
+        });
+
+        // Previous WebSocket connection handlers remain the same
+        ws.onopen = () => {
+            console.log("WebSocket connection established");
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket connection closed");
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+        // Get user media and set up recorders
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then((stream) => {
+                const video = document.getElementById("localVideo");
+                video.srcObject = stream;
+
+                const videoTrack = stream.getVideoTracks()[0];
+                const audioTrack = stream.getAudioTracks()[0];
+
+                const videoRecorder = new MediaRecorder(new MediaStream([videoTrack]), { mimeType: "video/webm" });
+                const audioRecorder = new MediaRecorder(new MediaStream([audioTrack]), { mimeType: "audio/webm" });
+
+                videoRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        sendToWebSocket(1, event.data);
+                    }
+                };
+
+                audioRecorder.ondataavailable = (event) => {
+    if (event.data.size > 0 && event.data.size >= 10) {  // Ensure minimum size
+        sendToWebSocket(2, event.data);
+    }
+};
+
+                videoRecorder.start(1000);
+                audioRecorder.start(1000);
+            })
+            .catch((error) => console.error("Error accessing media devices:", error));
+
+        // Handle text input
+        document.getElementById("sendText").addEventListener("click", () => {
+            const text = document.getElementById("textInput").value;
+            sendToWebSocket(0, text);
+            document.getElementById("textInput").value = '';
+        });
+
+        function sendToWebSocket(type, data) {
+            if (ws.readyState === WebSocket.OPEN) {
+                if (type === 0) {
+                    ws.send(new Uint8Array([type, ...new TextEncoder().encode(data)]));
+                } else {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        ws.send(new Uint8Array([type, ...new Uint8Array(reader.result)]));
+                    };
+                    reader.readAsArrayBuffer(data);
+                }
+            }
+        }
+        
+    </script>
+</body>
+</html>

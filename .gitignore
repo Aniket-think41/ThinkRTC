@@ -1,0 +1,57 @@
+# Python bytecode files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Virtual environment directories
+venv/
+env/
+.venv/
+ENV/
+
+# IDE/editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Python distribution and packaging
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Pytest
+.pytest_cache/
+
+# Coverage reports
+*.coverage
+*.coverage.*
+coverage.xml
+nosetests.xml
+test-results/
+
+# pipenv
+Pipfile.lock
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+
+# Cython debug symbols
+cython_debug/
+
+# Others
+*.DS_Store
+*.env
+*.env.*
+*.local
