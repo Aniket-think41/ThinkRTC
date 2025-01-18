@@ -8,7 +8,7 @@ import json
 
 logging.basicConfig(level=logging.INFO)
 
-API_KEY = "b348ee9fd0bcfaa7ef63b81bca9e74116d82db31"
+API_KEY = ""
 
 config = DeepgramClientOptions(
     verbose=logging.WARN,
